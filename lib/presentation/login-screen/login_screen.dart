@@ -31,8 +31,8 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
 
   Future<void> _signIn() async {
-            // Call this method when you want to hide the keyboard
-                  FocusScope.of(context).unfocus();
+    // Call this method when you want to hide the keyboard
+    FocusScope.of(context).unfocus();
     final isValid = _formKey.currentState!.validate();
     if (!isValid) {
       return;
@@ -65,6 +65,11 @@ class _LoginPageState extends State<LoginPage> {
         await prefs.setString('profile_url', userData.profile_url);
       }
 
+      // Reset Bottom Navigation state
+      final bottomNavigationProvider =
+          Provider.of<BottomNavigationProvider>(context, listen: false);
+      bottomNavigationProvider.updateIndex(0); // Reset to the default index
+
       Navigator.of(context)
           .pushAndRemoveUntil(HomePage.route(), (route) => false);
     } on AuthException catch (error) {
@@ -93,67 +98,65 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Scaffold(
-        // appBar: AppBar(title: const Text('Sign In')),
-        body: Center(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  // padding: formPadding,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircleAvatar(radius: 50, child: Image.asset(defaultAvatar)),
-                    const SizedBox(
-                      height: 30,
-                    ),
-                    TextFormField(
-                      controller: _emailController,
-                      decoration: const InputDecoration(labelText: 'Email'),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: ValidatorUtils.validateEmail,
-                    ),
-                    formSpacer,
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      decoration: InputDecoration(
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                              color: Theme.of(context).primaryColor,
-                            ),
-                            onPressed: () {
-                              // Toggle password visibility
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
+    return Scaffold(
+      // appBar: AppBar(title: const Text('Sign In')),
+      body: Center(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                // padding: formPadding,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircleAvatar(radius: 50, child: Image.asset(defaultAvatar)),
+                  const SizedBox(
+                    height: 30,
+                  ),
+                  TextFormField(
+                    controller: _emailController,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: ValidatorUtils.validateEmail,
+                  ),
+                  formSpacer,
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: Theme.of(context).primaryColor,
                           ),
-                          labelText: 'Password'),
-                    ),
-                    formSpacer,
-                    _isLoading
-                        ? const CircularProgressIndicator(
-                            strokeWidth: 2,
-                          )
-                        : ElevatedButton(
-                            onPressed: _signIn,
-                            child: const Text('Login'),
-                          ),
-                    10.height,
-                    TextButton(
-                        onPressed: () {
-                          Navigator.of(context).push(RegisterPage.route());
-                        },
-                        child: const Text('Create an account'))
-                  ],
-                ),
+                          onPressed: () {
+                            // Toggle password visibility
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
+                        labelText: 'Password'),
+                  ),
+                  formSpacer,
+                  _isLoading
+                      ? const CircularProgressIndicator(
+                          strokeWidth: 2,
+                        )
+                      : ElevatedButton(
+                          onPressed: _signIn,
+                          child: const Text('Login'),
+                        ),
+                  10.height,
+                  TextButton(
+                      onPressed: () {
+                        Navigator.of(context).push(RegisterPage.route());
+                      },
+                      child: const Text('Create an account'))
+                ],
               ),
             ),
           ),

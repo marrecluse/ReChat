@@ -3,6 +3,7 @@ class ChatroomModel {
   final String name;
   final String description;
   final int totalMembers;
+  final String lastMessage;
   final DateTime createdAt;
   final DateTime? lastActivity;
   final String creatorId;
@@ -11,6 +12,7 @@ class ChatroomModel {
   ChatroomModel({
     required this.id,
     required this.name,
+    required this.lastMessage,
     this.description = '',
     this.totalMembers = 0,
     required this.createdAt,
@@ -29,6 +31,7 @@ class ChatroomModel {
       'created_at': createdAt.toIso8601String(),
       'last_activity': lastActivity?.toIso8601String(),
       'creator_id': creatorId,
+      'last_message': lastMessage,
       'avatar_url': avatarUrl,
     };
   }
@@ -38,6 +41,7 @@ class ChatroomModel {
     return ChatroomModel(
       id: map['id'] as String,
       name: map['name'] as String,
+      lastMessage: map['last_message'] as String,
       description: map['description'] as String? ?? '',
       totalMembers: map['total_members'] as int? ?? 0,
       createdAt: DateTime.parse(map['created_at'] as String),

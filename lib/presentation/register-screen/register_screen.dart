@@ -52,94 +52,111 @@ class _RegisterPageState extends State<RegisterPage> {
       context.showErrorSnackBar(message: "Permisson not granted");
     }
   }
+Future<void> _signUp() async {
+  // Call this method when you want to hide the keyboard
+  FocusScope.of(context).unfocus();
 
-  Future<void> _signUp() async {
-    // Call this method when you want to hide the keyboard
-                  FocusScope.of(context).unfocus();
+  final isValid = _formKey.currentState!.validate();
+  if (!isValid) {
+    return;
+  }
+  setState(() {
+    _isLoading = true;
+  });
 
-     final isValid = _formKey.currentState!.validate();
-    if (!isValid) {
-      return;
-    }
-    setState(() {
-      _isLoading = true;
-    });
-          
-   
+  final email = _emailController.text;
+  final password = _passwordController.text;
+  final username = _usernameController.text;
 
-    final email = _emailController.text;
-    final password = _passwordController.text;
-    final username = _usernameController.text;
+  try {
+    // Sign up the user
+    final response = await supabase.auth.signUp(
+      email: email,
+      password: password,
+      data: {'username': username},
+    );
 
-    try {
-      // Sign up the user
-      final response = await supabase.auth.signUp(
-        email: email,
-        password: password,
-        data: {'username': username},
-      );
+    if (response.user != null) {
+      final userId = response.user!.id;
+      String? profilePicUrl;
 
-      if (response.user != null) {
-        final userId = response.user!.id;
+      // Upload profile picture if selected
+      if (_selectedProfilePic != null) {
+        final profilePicFile = _selectedProfilePic!;
+        final fileExt = profilePicFile.path.split('.').last;
+        final fileName = '${userId}_profile.$fileExt';
+        final filePath = 'user_profiles/$fileName';
 
-        String? profilePicUrl;
+        final storageResponse = await supabase.storage
+            .from('user_avatars')
+            .upload(filePath, profilePicFile);
 
-        // Upload profile picture if selected
-        if (_selectedProfilePic != null) {
-          final profilePicFile = _selectedProfilePic!;
-          final fileExt = profilePicFile.path.split('.').last;
-          final fileName = '${userId}_profile.$fileExt';
-          final filePath = 'user_profiles/$fileName';
-
-          final storageResponse = await supabase.storage
+        if (storageResponse.isNotEmpty) {
+          final urlResponse = supabase.storage
               .from('user_avatars')
-              .upload(filePath, profilePicFile);
-          profilePicUrl =
-              supabase.storage.from('user_avatars').getPublicUrl(filePath);
-        }
+              .getPublicUrl(filePath);
 
-        // Insert the user information into the 'users' table
-        final insertResponse = await supabase.from('users').insert({
-          'id': userId,
-          'email': email,
-          'name': username,
-          'profile_url': profilePicUrl,
-        });
+          profilePicUrl = urlResponse; // Assign the URL properly
+        } else {
+          // Handle profile picture upload error
+          context.showErrorSnackBar(message: 'Profile picture upload failed');
+          setState(() {
+            _isLoading = false;
+          });
+          return; // Early return on error
+        }
+      }
+
+      // Insert the user information into the 'users' table
+      final insertResponse = await supabase.from('users').insert({
+        'id': userId,
+        'email': email,
+        'name': username,
+        'profile_url': profilePicUrl,
+      });
 
         // Navigate to the home page
         Navigator.of(context)
             .pushAndRemoveUntil(HomePage.route(), (route) => false);
-      } else {
-        context.showErrorSnackBar(message: 'Sign up failed');
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } on AuthException catch (error) {
-      context.showErrorSnackBar(message: error.message);
-      setState(() {
-        _isLoading = false;
-      });
-    } catch (error) {
-      context.showErrorSnackBar(
-          message: 'An unexpected error occurred: $error');
+    
+    } else {
+      context.showErrorSnackBar(message: 'Sign-up failed');
       setState(() {
         _isLoading = false;
       });
     }
+  } on AuthApiException catch (error){
+      context.showErrorSnackBar(message: '${error.code}: ${error.message}');
+    setState(() {
+      _isLoading = false;
+    });
   }
+  
+   on AuthException catch (error) {
+      context.showErrorSnackBar(message: '${error.code}: ${error.message}');
+    setState(() {
+      _isLoading = false;
+    });
+  } catch (error) {
+    context.showErrorSnackBar(message: 'An unexpected error occurred: $error');
+    setState(() {
+      _isLoading = false;
+    });
+  }
+}
+
 
   @override
   Widget build(BuildContext context) {
     var theme = Theme.of(context);
     var style = theme.textTheme.displayMedium!
         .copyWith(color: theme.colorScheme.onPrimary);
-    return SafeArea(
-      child: Scaffold(
-        // appBar: AppBar(
-        //   title: const Text('Register'),
-        // ),
-        body: Center(
+    return Scaffold(
+      // appBar: AppBar(
+      //   title: const Text('Register'),
+      // ),
+      body: SafeArea(
+        child: Center(
           child: SingleChildScrollView(
             child: Column(
               children: [

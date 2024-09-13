@@ -31,6 +31,20 @@ class UserProvider with ChangeNotifier {
     notifyListeners();
   }
 
+ // Perform the logout logic
+  Future<void> logout() async {
+    try {
+      // Log out from Supabase
+      await Supabase.instance.client.auth.signOut();
+
+      // Clear the user data
+      _user = null;
+      
+      notifyListeners(); // Notify that user data has changed
+    } catch (e) {
+      print("Logout failed: $e");
+    }
+  }
   Future<void> fetchUser() async {
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
@@ -74,6 +88,52 @@ class ChatroomProvider with ChangeNotifier {
 
   List<ChatroomModel> get chatrooms => _chatrooms;
   bool get isLoading => _isLoading;
+  Future<List<ChatroomModel>> fetchChatroomDetails(String userId) async {
+    // Fetch chatrooms where the user is the creator
+    final creatorResponse =
+        await supabase.from('chatrooms').select().eq('creator_id', userId);
+    print('creator response: $creatorResponse');
+
+    final creatorChatrooms = (creatorResponse as List)
+        .map((item) => ChatroomModel.fromMap(item))
+        .toSet();
+    print('creatorCHatrooms: $creatorChatrooms');
+
+    // Fetch chatroom IDs where the user is a member
+    final memberResponse = await supabase
+        .from('chatroom_members')
+        .select('chatroom_id')
+        .eq('role', 'member')
+        .eq('user_id', userId);
+
+    print('memberResponse: $memberResponse');
+
+    final memberChatroomIds =
+        (memberResponse as List).map((item) => item['chatroom_id']).toSet();
+
+    // Fetch chatrooms based on member chatroom IDs
+    final memberChatroomsResponse = await supabase
+        .from('chatrooms')
+        .select()
+        .inFilter('id', memberChatroomIds.toList());
+
+    print("memberChatroomsResponse: $memberChatroomsResponse");
+
+    final memberChatrooms = (memberChatroomsResponse as List)
+        .map((item) => ChatroomModel.fromMap(item))
+        .toSet();
+
+    print('memberChatrooms:$memberChatrooms');
+
+    // Combine creator and member chatrooms
+    final allChatrooms = {...creatorChatrooms, ...memberChatrooms};
+
+    print('allChatrooms: $allChatrooms');
+    return allChatrooms.toList();
+  }
+
+
+
 
   Future<String> getSenderName(String senderId) async {
     // Check if the name is already cached
@@ -96,19 +156,22 @@ class ChatroomProvider with ChangeNotifier {
       String chatroomId, String email, BuildContext context) async {
     final userId = Supabase.instance.client.auth.currentUser!.id;
 
+     // Fetch the user by email
     final userIdResponse =
-        await supabase.from('users').select().eq('email', email).single();
+        await supabase.from('users').select().eq('email', email).limit(1).single();
+
+      final targetUserId = userIdResponse['id'];
+
 
     try {
-      final targetUserId = userIdResponse['id'];
 
       // Check if the user is already in the chatroom
       final existingMemberResponse = await Supabase.instance.client
           .from('chatroom_members')
           .select()
           .eq('user_id', targetUserId)
-          .eq('chatroom_id', chatroomId)
-          .single();
+          .eq('chatroom_id', chatroomId);
+
       if (existingMemberResponse.isEmpty) {
         final response = await Supabase.instance.client
             .from('chatroom_members')
@@ -241,8 +304,10 @@ class ChatroomProvider with ChangeNotifier {
       final currentUserId = supabase.auth.currentUser!.id;
       final response = await Supabase.instance.client
           .from('chatrooms')
-          .select('*, chatroom_members!inner(user_id)')
-          .eq('chatroom_members.user_id', currentUserId);
+          // .select('*, chatroom_members!inner(user_id)')
+          .select()
+          // .eq('chatroom_members.user_id', currentUserId);
+          .eq('creator_id', currentUserId);
       if (response.isNotEmpty) {
         print('rooms response: $response');
         _chatrooms = (response as List)

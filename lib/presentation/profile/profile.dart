@@ -27,8 +27,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final TextEditingController _usernameController = TextEditingController();
   File? _selectedProfilePic;
-    bool _isLoggingOut = false; // State variable for loading
-
+  bool _isLoggingOut = false; // State variable for loading
 
   @override
   void initState() {
@@ -68,38 +67,37 @@ class _ProfilePageState extends State<ProfilePage> {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
     _usernameController.text = userProvider.user!.name;
 
-    // final profileProvider = Provider.of<ProfileProvider>(context);
-    final bottomNavigation = Provider.of<BottomNavigationProvider>(context);
-
-    return Stack(
-
-      children:
-      [ Scaffold(
+    return Stack(children: [
+      Scaffold(
         appBar: AppBar(
           actions: [
             IconButton(
-                onPressed: () async {
-                   setState(() {
-                    _isLoggingOut = true; // Hide loader after logging out
-                  });
+              onPressed: () async {
+                setState(() {
+                  _isLoggingOut = true; // Show loader during logout
+                });
+
+                try {
                   await supabase.auth.signOut();
-                  // Clear user data from SharedPreferences
+
+                  // Clear user data from SharedPreferences (if needed)
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('userId');
-                  await prefs.remove('userName');
-                  await prefs.remove('profile_url');
-      
-                  // so that it can return to home page after log out
-                  bottomNavigation.updateIndex(0);
-      
-                  Navigator.of(context)
-                      .pushAndRemoveUntil(LoginPage.route(), (route) => false);
-                                       
-     setState(() {
+                  await prefs.clear(); // Or remove specific keys if you need
+                  // Navigate to the login page and remove all previous routes
+                  Navigator.of(context).pushAndRemoveUntil(
+                    LoginPage.route(),
+                    (route) => false,
+                  );
+                } catch (error) {
+                  print('Logout error: $error');
+                } finally {
+                  setState(() {
                     _isLoggingOut = false; // Hide loader after logging out
                   });
-                },
-                icon: Icon(Icons.logout))
+                }
+              },
+              icon: Icon(Icons.logout),
+            ),
           ],
           title: Text(
             'Profile',
@@ -154,25 +152,25 @@ class _ProfilePageState extends State<ProfilePage> {
                 onPressed: () async {
                   final userId = supabase.auth.currentUser!.id;
                   String? profilePicUrl;
-      
+
                   // Upload profile picture if selected
                   if (_selectedProfilePic != null) {
                     final profilePicFile = _selectedProfilePic!;
                     final fileExt = profilePicFile.path.split('.').last;
                     final fileName = '${userId}_profile.$fileExt';
                     final filePath = 'user_profiles/$fileName';
-      
+
                     try {
                       // Check if there's an existing file and delete it before uploading the new one
                       await supabase.storage
                           .from('user_avatars')
                           .remove(['user_profiles/$fileName']);
-      
+
                       // Upload the new profile picture
                       await supabase.storage
                           .from('user_avatars')
                           .upload(filePath, profilePicFile);
-      
+
                       // Get the public URL of the uploaded file
                       final response = supabase.storage
                           .from('user_avatars')
@@ -184,7 +182,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       return;
                     }
                   }
-      
+
                   // Update profile in Supabase database
                   final updates = {
                     'id': userId,
@@ -192,10 +190,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     'name': _usernameController.text,
                     // Add other fields to update like email if needed
                   };
-      
+
                   try {
-                    await supabase.from('users').update(updates).eq('id', userId);
-                    context.showSnackBar(message: "Profile updated successfully");
+                    await supabase
+                        .from('users')
+                        .update(updates)
+                        .eq('id', userId);
+                    context.showSnackBar(
+                        message: "Profile updated successfully");
                     userProvider.fetchUser();
                   } catch (error) {
                     context.showErrorSnackBar(
@@ -208,21 +210,21 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
       ),
-
-             if (_isLoggingOut) ...[
-          // Blur effect
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 2.0, sigmaY: 2.0),
-            child: Container(
-              color: Colors.black.withOpacity(0.2), // Slight overlay color
-            ),
+      if (_isLoggingOut) ...[
+        // Blur effect
+        BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 2.0, sigmaY: 2.0),
+          child: Container(
+            color: Colors.black.withOpacity(0.2), // Slight overlay color
           ),
-          // Loader in the center
-          Center(
-            child: CircularProgressIndicator(strokeWidth: 2,),
+        ),
+        // Loader in the center
+        Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
           ),
-        ]
+        ),
       ]
-    );
+    ]);
   }
 }

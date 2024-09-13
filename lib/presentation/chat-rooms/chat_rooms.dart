@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:intl/intl.dart';
 import 'package:my_chat_app/data/chatroom-model.dart';
 import 'package:my_chat_app/presentation/chat-screen/chat_screen.dart';
 import 'package:my_chat_app/presentation/providers/state_providers.dart';
@@ -15,18 +16,28 @@ class ChatRooms extends StatefulWidget {
 }
 
 class _ChatRoomsState extends State<ChatRooms> {
+  late Stream<List<ChatroomModel>> _chatroomsStream;
+
   @override
   void initState() {
     // TODO: implement initState
     super.initState();
+    final userId = supabase.auth.currentUser!.id;
+    final chatroomProvider =Provider.of<ChatroomProvider>(context,listen: false);
+    chatroomProvider.fetchChatroomDetails(userId);
+
     // Fetch chatrooms when the widget is initialized
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final chatroomProvider =
-          Provider.of<ChatroomProvider>(context, listen: false);
-          
-      chatroomProvider.fetchChatrooms();
-    });
+    _chatroomsStream = Stream.fromFuture(chatroomProvider.fetchChatroomDetails(userId));
+
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   final chatroomProvider =
+    //       Provider.of<ChatroomProvider>(context, listen: false);
+
+    //   chatroomProvider.fetchChatrooms();
+    // });
   }
+
+
 
   // Function to show bottom sheet for creating a chatroom
   void _showCreateChatroomBottomSheet(BuildContext context) {
@@ -72,9 +83,16 @@ class _ChatRoomsState extends State<ChatRooms> {
   }
 
   @override
+  void dispose() {
+    // Clear any resources, streams, or subscriptions
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final chatroomProvider = Provider.of<ChatroomProvider>(context);
-
+  String lastMessageTime = '';
+   
     final userProvider = Provider.of<UserProvider>(context);
     final user = userProvider.user;
     debugPrint("user is : $user");
@@ -140,28 +158,19 @@ class _ChatRoomsState extends State<ChatRooms> {
             // List of chatrooms
             chatroomProvider.isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2,),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
                   )
-                : chatroomProvider.chatrooms.isEmpty
-                    ? const Center(
-                        child: Text('No rooms'),
-                      )
-                    : StreamBuilder<List<ChatroomModel>>(
-                        stream: supabase
-                            .from('chatrooms')
-                            .stream(primaryKey: ['id']).map((data) {
-                          if (data != null) {
-                            return (data as List<Map<String, dynamic>>)
-                                .map((item) => ChatroomModel.fromMap(item))
-                                .toList();
-                          } else {
-                            return [];
-                          }
-                        }),
+                : StreamBuilder<List<ChatroomModel>>(
+                        stream: _chatroomsStream,
                         builder: (context, snapshot) {
                           if (snapshot.connectionState ==
                               ConnectionState.waiting) {
-                            return Center(child: CircularProgressIndicator(strokeWidth: 2,));
+                            return Center(
+                                child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ));
                           }
 
                           if (snapshot.hasError) {
@@ -176,30 +185,44 @@ class _ChatRoomsState extends State<ChatRooms> {
 
                           final chatrooms = snapshot.data!;
                           print('ch::$chatrooms');
+                          
                           return Expanded(
                             child: ListView.builder(
                               itemCount: chatrooms
                                   .length, // Replace with actual number of chatrooms
                               itemBuilder: (context, index) {
                                 final chatroom = chatrooms[index];
+                                 if (chatroom.lastActivity != null) {
+      final formattedTime = DateFormat.jm().format(chatroom.lastActivity!); // Format as desired
+      lastMessageTime = formattedTime;
+    }
                                 return ListTile(
+                                    key: ValueKey(chatroom.id),
+
                                   leading: CircleAvatar(
-                                    child: Text(chatroom.name[0]),
+                                    child: Text(chatroom.name[0],),
                                   ),
-                                  title: Text(chatroom.name),
-                                  subtitle: Text(chatroom.description),
-                                  trailing: 1 > 0
-                                      ? CircleAvatar(
-                                          radius: 10,
-                                          backgroundColor: Colors.red,
-                                          child: Text(
-                                            'tim'.toString(),
-                                            style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 12),
-                                          ),
-                                        )
-                                      : null,
+                                  title: Text(chatroom.name,style: Theme.of(context).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.bold),),
+                                  subtitle: Text(chatroom.lastMessage),
+                                  trailing: lastMessageTime.isNotEmpty
+          ? Container(
+            width: 60,
+            height: 30,
+            decoration: BoxDecoration(
+                          color: Colors.green,
+              borderRadius: BorderRadius.all(Radius.circular(10))
+            ),
+              child: Center(
+                child: Text(
+                  lastMessageTime,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            )
+          : null,
                                   onTap: () {
                                     Navigator.push(
                                         context,

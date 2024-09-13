@@ -39,8 +39,6 @@ class HomePage extends StatelessWidget {
         onTap: (value){
           if (currentScreenIndex == 1) {
                 friendsProvider.setDefault();
-
-            
           }
           return _screenIndexProvider.updateIndex(value);
         },

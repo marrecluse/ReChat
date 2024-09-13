@@ -43,19 +43,43 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   late final Stream<List<Message>> _messagesStream;
   final Map<String, Profile> _profileCache = {};
+  List<Message> _messages = [];
 
-  @override
-  void initState() {
-    final myUserId = supabase.auth.currentUser!.id;
-    _messagesStream = supabase
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .order('created_at')
-        .map((maps) => maps
-            .map((map) => Message.fromMap(map: map, myUserId: myUserId))
-            .toList());
-    super.initState();
-  }
+ @override
+void initState() {
+  super.initState();
+  final myUserId = supabase.auth.currentUser!.id;
+  _messagesStream = supabase
+      .from('messages')
+      .select()
+      .eq('chatroom_id', widget.chatroomId)
+      .order('created_at')
+      .asStream()
+      .map((maps) => maps
+          .map((map) => Message.fromMap(map: map, myUserId: myUserId))
+          .toList());
+
+  // Subscribe to real-time changes for the messages table
+  supabase
+      .channel('public:messages')
+      .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'chatroom_id',
+              value: widget.chatroomId),
+          callback: (payload) {
+            final newMessage =
+                Message.fromMap(map: payload.newRecord, myUserId: myUserId);
+            setState(() {
+              _messages.insert(0, newMessage); // Add new message at the top
+            });
+          })
+      .subscribe();
+}
+
 
   Future<void> _loadProfileCache(String profileId) async {
     if (_profileCache[profileId] != null) {
@@ -100,6 +124,11 @@ class _ChatPageState extends State<ChatPage> {
         builder: (context, snapshot) {
           if (snapshot.hasData) {
             final messages = snapshot.data!;
+            final allMessages = [
+              ..._messages,
+              ...?snapshot.data
+            ]; // Combine real-time and initial data
+
             return Column(
               children: [
                 Expanded(
@@ -109,9 +138,10 @@ class _ChatPageState extends State<ChatPage> {
                         )
                       : ListView.builder(
                           reverse: true,
-                          itemCount: messages.length,
+                          itemCount: allMessages.length,
                           itemBuilder: (context, index) {
-                            final message = messages[index];
+                            // final message = messages[index];
+                            final message = allMessages[index];
 
                             /// I know it's not good to include code that is not related
                             /// to rendering the widget inside build method, but for
@@ -125,7 +155,9 @@ class _ChatPageState extends State<ChatPage> {
                           },
                         ),
                 ),
-                const _MessageBar(),
+                _MessageBar(
+                  chatroom_id: widget.chatroomId,
+                ),
               ],
             );
           } else {
@@ -205,8 +237,10 @@ class _InviteToChatBottomSheetState extends State<InviteToChatBottomSheet> {
 
 /// Set of widget that contains TextField and Button to submit message
 class _MessageBar extends StatefulWidget {
-  const _MessageBar({
+  String chatroom_id;
+  _MessageBar({
     Key? key,
+    required this.chatroom_id,
   }) : super(key: key);
 
   @override
@@ -240,7 +274,7 @@ class _MessageBarState extends State<_MessageBar> {
                 ),
               ),
               TextButton(
-                onPressed: () => _submitMessage(),
+                onPressed: () => _submitMessage(widget.chatroom_id),
                 child: const Text('Send'),
               ),
             ],
@@ -262,7 +296,7 @@ class _MessageBarState extends State<_MessageBar> {
     super.dispose();
   }
 
-  void _submitMessage() async {
+  void _submitMessage(String chatroom_id) async {
     final text = _textController.text;
     final myUserId = supabase.auth.currentUser!.id;
     if (text.isEmpty) {
@@ -273,7 +307,19 @@ class _MessageBarState extends State<_MessageBar> {
       await supabase.from('messages').insert({
         'sender_id': myUserId,
         'content': text,
+        'chatroom_id': widget.chatroom_id
       });
+
+  // Step 2: Update the chatroom with the new last message and timestamp
+    await supabase.from('chatrooms').update({
+      'last_message': text, // Assuming 'last_message' field exists
+      'last_activity': DateTime.now().toUtc().toIso8601String() // Update timestamp
+    }).eq('id', chatroom_id);
+
+
+     final chatroomProvider =Provider.of<ChatroomProvider>(context);
+    chatroomProvider.fetchChatroomDetails(supabase.auth.currentUser!.id);
+
     } on PostgrestException catch (error) {
       context.showErrorSnackBar(message: error.message);
     } catch (_) {
@@ -299,63 +345,49 @@ class _ChatBubble extends StatelessWidget {
     List<Widget> chatContents = [
       if (!message.isMine)
         CircleAvatar(
-          backgroundImage: profile == null
-              ? AssetImage(
-                 defaultAvatar) // Provide a default image if profilePicUrl is null
-              : NetworkImage(profile!.profilePicUrl!) as ImageProvider,
+          backgroundImage: profile?.profilePicUrl != null
+              ? NetworkImage(profile!.profilePicUrl!) as ImageProvider
+              : AssetImage(defaultAvatar) as ImageProvider,
         ),
       const SizedBox(width: 12),
-      FutureBuilder<String>(
-          future: chatRoomProvider.getSenderName(message.sender_id),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return CircularProgressIndicator(); // Show a loader while waiting
-            } else if (snapshot.hasError) {
-              return Text('Error: ${snapshot.error}');
-            } else {
-              String senderName = snapshot.data ?? 'Unknown';
-
-              return Flexible(
-                child: Column(
-                  crossAxisAlignment: message.isMine
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
-                  children: [
-                    if (!message
-                        .isMine) // Only show the sender's name if it's not your message
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          senderName,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black54,
-                          ),
-                        ),
-                      ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: message.isMine
-                            ? Theme.of(context).primaryColor
-                            : Colors.grey[300],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        message.content,
-                        style: TextStyle(
-                          color: message.isMine ? Colors.white : Colors.black,
-                        ),
-                      ),
-                    ),
-                  ],
+      Flexible(
+        child: Column(
+          crossAxisAlignment: message.isMine
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            if (!message.isMine && profile != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  profile!.username ?? 'Unknown User', // Handle null username
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black54,
+                  ),
                 ),
-              );
-            }
-          }),
+              ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                vertical: 8,
+                horizontal: 12,
+              ),
+              decoration: BoxDecoration(
+                color: message.isMine
+                    ? Theme.of(context).primaryColor
+                    : Colors.grey[300],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                message.content,
+                style: TextStyle(
+                  color: message.isMine ? Colors.white : Colors.black,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
       const SizedBox(width: 12),
       Text(format(message.createdAt, locale: 'en_short')),
       const SizedBox(width: 60),
